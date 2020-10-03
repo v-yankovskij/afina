@@ -57,11 +57,15 @@ private:
     using lru_node = struct lru_node {
         lru_node(const std::string& key, const std::string& value) : key(key), value(value) {}
 
-        std::string key;
+        const std::string key;
         std::string value;
         lru_node* prev;
         std::unique_ptr<lru_node> next;
     };
+    
+    void to_tail(lru_node& node);
+    void set_node(lru_node& node, const std::string &value);
+    void add_node(const std::string& key, const std::string &value);
 
     // Maximum number of bytes could be stored in this cache.
     // i.e all (keys+values) must be less the _max_size
