@@ -38,7 +38,8 @@ void SimpleLRU::set_node(lru_node& node, const std::string &value) {
     while((value.length() > _space_left + node.value.length())) {
         free_head();
     }
-    _space_left -= (value.length() - node.value.length());
+    _space_left += node.value.length();
+    _space_left -= value.length();
     node.value = value;
 }
 
