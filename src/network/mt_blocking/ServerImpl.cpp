@@ -93,7 +93,7 @@ void ServerImpl::Join() {
     _thread.join();
     close(_server_socket);
     std::unique_lock<std::mutex> lock(_mutex);
-    while (!_client_sockets.empty()) {
+    while (!_client_sockets.empty() || running.load()) {
         _condition_variable.wait(lock);
     }
 }
