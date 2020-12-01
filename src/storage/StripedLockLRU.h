@@ -19,10 +19,9 @@ namespace Backend {
  */
 class StripedLockLRU: public Afina::Storage {
 public:
-    StripedLockLRU(size_t max_size = 1<<24, size_t num_shards = 4): _max_size(max_size), _num_shards(num_shards) {
-         size_t shard_size = _max_size/_num_shards;
+    StripedLockLRU(size_t shard_size = 1<<20, size_t num_shards = 4): _shard_size(shard_size), _num_shards(num_shards) {
          for(size_t i = 0; i < _num_shards; i++) {
-             _shards.emplace_back(new ThreadSafeSimplLRU(shard_size));
+             _shards.emplace_back(new ThreadSafeSimplLRU(_shard_size));
          }
     }
 
@@ -55,7 +54,7 @@ public:
 
 private:
     std::hash<std::string> _hash;
-    size_t _max_size;
+    size_t _shard_size;
     size_t _num_shards;
     std::vector<std::unique_ptr<ThreadSafeSimplLRU>> _shards;
 };
