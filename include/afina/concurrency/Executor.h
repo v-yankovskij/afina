@@ -9,6 +9,8 @@
 #include <string>
 #include <thread>
 
+#include <spdlog/logger.h>
+
 namespace Afina {
 namespace Concurrency {
 
@@ -16,6 +18,8 @@ namespace Concurrency {
  * # Thread pool
  */
 class Executor {
+public:
+
     enum class State {
         // Threadpool is fully operational, tasks could be added and get executed
         kRun,
@@ -24,11 +28,11 @@ class Executor {
         // completed as requested
         kStopping,
 
-        // Threadppol is stopped
+        // Threadpool is stopped
         kStopped
     };
 
-    Executor(std::string name, int size);
+    Executor(size_t low_watermark_ = 4, size_t high_watermark_ = 16, size_t max_queue_size_ = 100, int64_t idle_time_ = 10000);
     ~Executor();
 
     /**
@@ -38,6 +42,12 @@ class Executor {
      * In case if await flag is true, call won't return until all background jobs are done and all threads are stopped
      */
     void Stop(bool await = false);
+
+
+    /**
+     * Main function that all pool threads are running. It polls internal task queue and execute tasks
+     */
+    void perform();
 
     /**
      * Add function to be executed on the threadpool. Method returns true in case if task has been placed
@@ -51,11 +61,14 @@ class Executor {
         auto exec = std::bind(std::forward<F>(func), std::forward<Types>(args)...);
 
         std::unique_lock<std::mutex> lock(this->mutex);
-        if (state != State::kRun) {
+        if (state != State::kRun || tasks.size() >= max_queue_size) {
             return false;
         }
 
         // Enqueue new task
+        if (threads.size() == running_threads && running_threads < high_watermark) {
+            threads.emplace_back(std::thread([this] { return perform();}));
+        }
         tasks.push_back(exec);
         empty_condition.notify_one();
         return true;
@@ -68,10 +81,6 @@ private:
     Executor &operator=(const Executor &); // = delete;
     Executor &operator=(Executor &&);      // = delete;
 
-    /**
-     * Main function that all pool threads are running. It polls internal task queue and execute tasks
-     */
-    friend void perform(Executor *executor);
 
     /**
      * Mutex to protect state below from concurrent modification
@@ -84,7 +93,12 @@ private:
     std::condition_variable empty_condition;
 
     /**
-     * Vector of actual threads that perorm execution
+     * Conditional variable to await the stop of executor
+     */
+    std::condition_variable stopping_condition;
+
+    /**
+     * Vector of actual threads that perform execution
      */
     std::vector<std::thread> threads;
 
@@ -97,6 +111,36 @@ private:
      * Flag to stop bg threads
      */
     State state;
+
+    /**
+     * Minimal number of threads available
+     */
+    size_t low_watermark;
+
+    /**
+     * Maximal number of threads available
+     */
+    size_t high_watermark;
+
+    /**
+     * Number of threads currently running
+     */
+    size_t running_threads;
+
+    /**
+     * Maximal number of tasks in queue
+     */
+    size_t max_queue_size;
+
+    /**
+     * Time to wait until a thread is stopped if the number of threads is above low watermark
+     */
+    int64_t idle_time;
+    
+    /**
+     * Error log
+     */
+    std::shared_ptr<spdlog::logger> _logger;
 };
 
 } // namespace Concurrency
