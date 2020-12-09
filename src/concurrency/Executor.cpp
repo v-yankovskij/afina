@@ -23,14 +23,14 @@ void Executor::Stop(bool await){
     if (state == State::kStopped){
         return;
     }
-    if (threads.empty()){
-        state == State::kStopped;
-        return;
-    }
     state = State::kStopping;
     empty_condition.notify_all();
     while(!threads.empty() && await){
         stopping_condition.wait(lock);
+    }
+    if (threads.empty()){
+        state = State::kStopped;
+        return;
     }
 }
 
