@@ -20,6 +20,7 @@
 #include <afina/Storage.h>
 #include <afina/execute/Command.h>
 #include <afina/logging/Service.h>
+#include <afina/concurrency/Executor.h>
 
 #include "protocol/Parser.h"
 
@@ -209,6 +210,7 @@ void ServerImpl::OnRun() {
     Protocol::Parser parser;
     std::string argument_for_command;
     std::unique_ptr<Execute::Command> command_to_execute;
+    Concurrency::Executor executor(4, _max_client_number);
     while (running.load()) {
         _logger->debug("waiting for connection...");
 
@@ -246,7 +248,7 @@ void ServerImpl::OnRun() {
             std::unique_lock<std::mutex> lock(_mutex);
             if(_client_sockets.size() <= _max_client_number){
                 _client_sockets.insert(client_socket);
-                std::thread(&ServerImpl::ThreadRun, this, client_socket).detach();
+                executor.Execute(&ServerImpl::ThreadRun, this, client_socket);
             }
             else{
                 close(client_socket); // too many sockets already connected
@@ -256,6 +258,7 @@ void ServerImpl::OnRun() {
     }
 
     // Cleanup on exit...
+    executor.Stop(true);
     _logger->warn("Network stopped");
 }
 
