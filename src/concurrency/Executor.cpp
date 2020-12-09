@@ -50,7 +50,11 @@ void Executor::perform(){
         tasks.pop_front();
         running_threads++;
         lock.unlock();
-        task();
+        try {
+            task();
+        } catch (std::exception &ex) {
+            _logger->error(ex.what());    
+        }
         lock.lock();
         running_threads--;
     }
