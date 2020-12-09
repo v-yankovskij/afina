@@ -60,7 +60,9 @@ void Executor::perform(){
     }
     auto this_thread = std::this_thread::get_id();
     auto it = std::find_if(threads.begin(), threads.end(), [this_thread](std::thread &x){return x.get_id() == this_thread; });
-    stopping_condition.notify_all();
+    if (threads.empty()){
+        stopping_condition.notify_all();
+    }
     threads.erase(it);
 }
 
