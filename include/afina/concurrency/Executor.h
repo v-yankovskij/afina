@@ -9,6 +9,8 @@
 #include <string>
 #include <thread>
 
+#include <spdlog/logger.h>
+
 namespace Afina {
 namespace Concurrency {
 
@@ -134,6 +136,11 @@ private:
      * Time to wait until a thread is stopped if the number of threads is above low watermark
      */
     int64_t idle_time;
+    
+    /**
+     * Error log
+     */
+    std::shared_ptr<spdlog::logger> _logger;
 };
 
 } // namespace Concurrency
