@@ -1,9 +1,19 @@
 #ifndef AFINA_NETWORK_ST_NONBLOCKING_CONNECTION_H
 #define AFINA_NETWORK_ST_NONBLOCKING_CONNECTION_H
 
-#include <cstring>
+#include <deque>
+#include <string>
+#include <memory>
 
+#include <spdlog/logger.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
+
+#include "protocol/Parser.h"
+
+#include <afina/Storage.h>
+#include <afina/execute/Command.h>
+
 
 namespace Afina {
 namespace Network {
@@ -31,6 +41,22 @@ private:
 
     int _socket;
     struct epoll_event _event;
+    bool running;
+
+    // Here is connection state
+    // - parser: parse state of the stream
+    // - command_to_execute: last command parsed out of stream
+    // - arg_remains: how many bytes to read from stream to get command argument
+    // - argument_for_command: buffer stores argument
+    std::size_t arg_remains;
+    Protocol::Parser parser;
+    std::string argument_for_command;
+    std::unique_ptr<Execute::Command> command_to_execute;
+
+    std::shared_ptr<spdlog::logger> _logger;
+    std::shared_ptr<Afina::Storage> pStorage;
+    std::deque<std::string> output;
+    char client_buffer[4096];
 };
 
 } // namespace STnonblock
