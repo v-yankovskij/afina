@@ -130,6 +130,13 @@ void ServerImpl::Join() {
     for (auto &w : _workers) {
         w.Join();
     }
+
+    std::unique_lock<std::mutex> lock(_mutex);
+    close(_server_socket);
+    for (auto conn: _connections){
+        close(conn->_socket);
+        delete conn;
+    }
 }
 
 // See ServerImpl.h
@@ -193,7 +200,7 @@ void ServerImpl::OnRun() {
                 }
 
                 // Register the new FD to be monitored by epoll.
-                Connection *pc = new Connection(infd);
+                Connection *pc = new Connection(infd, _logger, pStorage);
                 if (pc == nullptr) {
                     throw std::runtime_error("Failed to allocate connection");
                 }
@@ -207,7 +214,13 @@ void ServerImpl::OnRun() {
                         _logger->debug("epoll_ctl failed during connection register in workers'epoll: error {}", epoll_ctl_retval);
                         pc->OnError();
                         delete pc;
+                    } else {
+                        std::lock_guard<std::mutex> lock(_mutex);
+                        _connections.emplace(pc);
                     }
+                } else {
+                    close(pc->_socket);
+                    delete pc;
                 }
             }
         }
