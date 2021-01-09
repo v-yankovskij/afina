@@ -111,6 +111,19 @@ public:
      * if passed routine is the current one method does nothing
      */
     void sched(void *routine);
+    
+    /**
+    * Adds routine to list
+    */
+    
+    void add(context*& list, context*& routine_);
+
+    /**
+    * Removes routine from list
+    */
+
+    void remove(context*& list, context*& routine_);
+
 
     /**
      * Blocks current routine so that is can't be scheduled anymore
