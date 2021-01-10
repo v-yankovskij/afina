@@ -8,7 +8,7 @@ namespace STnonblock {
 
 // See Connection.h
 void Connection::Start() {
-    _event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLPRI;
+    _event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
     _logger->debug("Start connection on socket {}", _socket);
 }
 
