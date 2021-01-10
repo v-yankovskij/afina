@@ -8,7 +8,7 @@ namespace Network {
 namespace MTnonblock {
 
 void Connection::Start() {
-    _event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLPRI| EPOLLET;
+    _event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
     _logger->debug("Start connection on socket {}", _socket);
 }
 
