@@ -13,23 +13,23 @@ void Engine::Store(context &ctx) {
             ctx.Hight = &Stack;
     } else {
             ctx.Low = &Stack;
+    }//определение границ стека
+    auto stack_size = ctx.Hight - ctx.Low;//вычисление размера стека
+    if (stack_size > std::get<1>(ctx.Stack) /*если имеющееся количество выделенной внутри памяти слишком мало чтобы сохранить стек*/ || stack_size * 2 < std::get<1>(ctx.Stack) /*или если можно обойтись значительно меньшим объемом памяти для этой цели*/) {
+            delete[] std::get<0>(ctx.Stack);//освобождение прошлого куска выделенной памяти
+            std::get<0>(ctx.Stack) = new char[stack_size];//выделение нового куска памяти
+            std::get<1>(ctx.Stack) = stack_size;//подходящего размера
     }
-    auto stack_size = ctx.Hight - ctx.Low;
-    if (stack_size > std::get<1>(ctx.Stack) || stack_size * 2 < std::get<1>(ctx.Stack)) {
-            delete[] std::get<0>(ctx.Stack);
-            std::get<0>(ctx.Stack) = new char[stack_size];
-            std::get<1>(ctx.Stack) = stack_size;
-    }
-    std::memcpy(std::get<0>(ctx.Stack), ctx.Low, stack_size);
+    std::memcpy(std::get<0>(ctx.Stack), ctx.Low, stack_size);//сохранение стека в выделенной памяти
 }
 
 void Engine::Restore(context &ctx) {
     char Stack;
     while (ctx.Low <= &Stack && &Stack <= ctx.Hight) {
         Restore(ctx);
-    }
-    std::memcpy(ctx.Low, std::get<0>(ctx.Stack), ctx.Hight - ctx.Low);
-    std::longjmp(ctx.Environment, 1);
+    }//многократно рекурсивно вызывая функцию сдвигаем вершину общего стека за пределы верхней границы памяти которую пытаемся восстановить (дабы не испортить её вызовом longjmp)
+    std::memcpy(ctx.Low, std::get<0>(ctx.Stack), ctx.Hight - ctx.Low););//восстанавливаем стек по сохраненной копии 
+    std::longjmp(ctx.Environment, 1);//восстанавливаем регистры микропроцессора
 }
 
 void Engine::yield() {
@@ -40,20 +40,23 @@ void Engine::yield() {
     if (it) {
         sched(it);
     }
-}
+}//переходит к произвольной другой активной корутине
 
 void Engine::sched(void *routine_) {
-    if (!routine_ || routine_ == cur_routine) {
+    if (!routine_ ) {
         return yield();
-    }
+    }//если routine_ == nullptr, то вызываем yield
+    if (routine_ == cur_routine) {
+        return;
+    }//если указанная корутина – текущая, то не делаем ничего
     if (cur_routine) {
-        Store(*cur_routine);
-        if (setjmp(cur_routine->Environment)) {
+        if (setjmp(cur_routine->Environment)/* сохранение регистров микропроцессора*/) {
             return;
-        }
+        }//если мы вернулись сюда с помощью longjmp, то setjmp выдаёт не 0 и мы не делаем ничего
+        Store(*cur_routine));//сохранение стека текущей корутины
     }
-    cur_routine = (context *)routine_;
-    Restore(*(context *)routine_);
+    cur_routine = (context *)routine_;//смена корутины 
+    Restore(*(context *)routine_);//на указанную
 }
 
 void Engine::remove(context*& list, context*& routine_){
@@ -69,8 +72,7 @@ void Engine::remove(context*& list, context*& routine_){
     if (routine_->prev != nullptr){
         routine_->prev->next = routine_->next;
     }
-
-}
+} // стандартное удаление элемента из двусвязного списка
 
 void Engine::add(context*& list, context*& routine_){
     if (list == nullptr){
@@ -83,18 +85,18 @@ void Engine::add(context*& list, context*& routine_){
         list->prev = routine_;
         list = routine_;
     }
-}
+}// стандартное добавление элемента в начало двусвязного списка
 
 void Engine::block(void *coro) {
     auto blocking = (context *)coro;
     if (coro == nullptr) {
         blocking = cur_routine;
     }
-    remove(alive, blocking);
-    add(blocked, blocking);
+    remove(alive, blocking);//удаление корутины из списка активных
+    add(blocked, blocking);//и добавление в список заблокированных
     if (blocking == cur_routine) {
         Restore(*idle_ctx);
-    }
+    }//если была заблокирована текущая корутина переходим к рутине по умолчанию
 }
 
 void Engine::unblock(void *coro) {
@@ -104,7 +106,7 @@ void Engine::unblock(void *coro) {
     }
     remove(blocked, unblocking);
     add(alive, unblocking);
-}
+}//удаление корутины из списка заблокированных и добавление её в список активных
 
 } // namespace Coroutine
 } // namespace Afina
