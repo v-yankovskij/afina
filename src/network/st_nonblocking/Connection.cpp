@@ -114,7 +114,6 @@ void Connection::DoWrite() {
         _logger->debug("Connection on socket {} is dead", _socket);
         return;
     }
-    std::size_t count_sent = 0;
     while (!output.empty()) {
         auto result = output.front();
         auto sent = send(_socket, result.data() + count_sent, result.size() - count_sent, 0);
@@ -128,7 +127,9 @@ void Connection::DoWrite() {
             break;
         }
     }
-    _event.events &= !EPOLLOUT;
+    if (!output.empty()) {
+        _event.events &= ~EPOLLOUT;
+    }
 }
 
 } // namespace STnonblock
