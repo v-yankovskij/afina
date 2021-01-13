@@ -24,6 +24,7 @@ public:
     Connection(int s, std::shared_ptr<spdlog::logger> logger, std::shared_ptr<Afina::Storage> ps) : _socket(s), pStorage(ps), _logger(logger) {
         std::memset(&_event, 0, sizeof(struct epoll_event));
         _event.data.ptr = this;
+        count_sent = 0;
     }
 
     inline bool isAlive() const { return true; }
@@ -57,6 +58,8 @@ private:
     std::shared_ptr<Afina::Storage> pStorage;
     std::deque<std::string> output;
     char client_buffer[4096];
+    
+    std::size_t count_sent;
 };
 
 } // namespace STnonblock
