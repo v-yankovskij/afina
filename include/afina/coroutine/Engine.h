@@ -6,8 +6,9 @@
 #include <iostream>
 #include <map>
 #include <tuple>
+#include<cstring>
 
-#include <setjmp.h>
+#include <csetjmp>
 
 namespace Afina {
 namespace Coroutine {
@@ -78,18 +79,21 @@ protected:
     /**
      * Save stack of the current coroutine in the given context
      */
+
+    __attribute__((no_sanitize_address))
     void Store(context &ctx);
 
     /**
      * Restore stack of the given context and pass control to coroutinne
      */
+    __attribute__((no_sanitize_address))
     void Restore(context &ctx);
 
     static void null_unblocker(Engine &) {}
 
 public:
     Engine(unblocker_func unblocker = null_unblocker)
-        : StackBottom(0), cur_routine(nullptr), alive(nullptr), _unblocker(unblocker) {}
+        : StackBottom(0), cur_routine(nullptr), alive(nullptr), blocked(nullptr), _unblocker(unblocker) {}
     Engine(Engine &&) = delete;
     Engine(const Engine &) = delete;
 
@@ -101,6 +105,7 @@ public:
      * Also there are no guarantee what coroutine will get execution, it could be caller of the current one or
      * any other which is ready to run
      */
+    __attribute__((no_sanitize_address))
     void yield();
 
     /**
@@ -110,20 +115,19 @@ public:
      * If routine to pass execution to is not specified (nullptr) then method should behaves like yield. In case
      * if passed routine is the current one method does nothing
      */
-    void sched(void *routine);
-    
-    /**
-    * Adds routine to list
-    */
-    
-    void add(context*& list, context*& routine_);
+    void sched(void *routine = nullptr);
 
     /**
-    * Removes routine from list
-    */
-
+     * removes routine from list
+     */
+    __attribute__((no_sanitize_address))
     void remove(context*& list, context*& routine_);
 
+    /**
+     * adds routine to list
+     */
+    __attribute__((no_sanitize_address))
+    void add(context*& list, context*& routine_);
 
     /**
      * Blocks current routine so that is can't be scheduled anymore
@@ -131,12 +135,14 @@ public:
      *
      * If argument is nullptr then block current coroutine
      */
-    void block(void *coro = nullptr);
+    __attribute__((no_sanitize_address))
+    void block(void *routine_ = nullptr);
 
     /**
      * Put coroutine back to list of alive, so that it could be scheduled later
      */
-    void unblock(void *coro);
+    __attribute__((no_sanitize_address))
+    void unblock(void *routine_);
 
     /**
      * Entry point into the engine. Prepare all internal mechanics and starts given function which is
@@ -148,48 +154,57 @@ public:
      * @param pointer to the main coroutine
      * @param arguments to be passed to the main coroutine
      */
-    template <typename... Ta> void start(void (*main)(Ta...), Ta &&... args) {
+    
+    template <typename... Ta> __attribute__((no_sanitize_address)) void start(void (*main)(Ta...), Ta &&... args) {
         // To acquire stack begin, create variable on stack and remember its address
         char StackStartsHere;
         this->StackBottom = &StackStartsHere;
-
         // Start routine execution
         void *pc = run(main, std::forward<Ta>(args)...);
 
         idle_ctx = new context();
-        if (setjmp(idle_ctx->Environment) > 0) {
+        cur_routine = idle_ctx;
+        idle_ctx->Low = StackBottom;
+        idle_ctx->Hight = StackBottom;
+        if (setjmp(idle_ctx->Environment) != 0) {
             if (alive == nullptr) {
                 _unblocker(*this);
             }
-
             // Here: correct finish of the coroutine section
             yield();
         } else if (pc != nullptr) {
             Store(*idle_ctx);
             sched(pc);
         }
-
         // Shutdown runtime
+        delete[] std::get<0>(idle_ctx->Stack);
         delete idle_ctx;
-        this->StackBottom = 0;
+        this->StackBottom = nullptr;
     }
 
+    template <typename... Ta> __attribute__((no_sanitize_address)) void* run(void (*func)(Ta...), Ta &&... args){
+        char Stack;
+        return run_impl(&Stack, func, std::forward<Ta>(args)...);
+    }
     /**
      * Register new coroutine. It won't receive control until scheduled explicitely or implicitly. In case of some
      * errors function returns -1
      */
-    template <typename... Ta> void *run(void (*func)(Ta...), Ta &&... args) {
-        if (this->StackBottom == 0) {
+    
+    template <typename... Ta>  __attribute__((no_sanitize_address)) void *run_impl(char* Stack, void (*func)(Ta...), Ta &&... args) {
+        if (this->StackBottom == nullptr) {
             // Engine wasn't initialized yet
             return nullptr;
         }
 
         // New coroutine context that carries around all information enough to call function
         context *pc = new context();
-
+        pc->Hight = Stack;
+        pc->Low = Stack;
         // Store current state right here, i.e just before enter new coroutine, later, once it gets scheduled
         // execution starts here. Note that we have to acquire stack of the current function call to ensure
         // that function parameters will be passed along
+        
         if (setjmp(pc->Environment) > 0) {
             // Created routine got control in order to start execution. Note that all variables, such as
             // context pointer, arguments and a pointer to the function comes from restored stack
@@ -216,22 +231,23 @@ public:
             // current coroutine finished, and the pointer is not relevant now
             cur_routine = nullptr;
             pc->prev = pc->next = nullptr;
-            delete std::get<0>(pc->Stack);
+            delete[] std::get<0>(pc->Stack);
             delete pc;
 
             // We cannot return here, as this function "returned" once already, so here we must select some other
             // coroutine to run. As current coroutine is completed and can't be scheduled anymore, it is safe to
-            // just give up and ask scheduler code to select someone else, control will never returns to this one
+            // just give up and ask scheduler code to select someone else, control will never return to this one
             Restore(*idle_ctx);
         }
 
-        // setjmp remembers position from which routine could starts execution, but to make it correctly
+        // setjmp remembers position from which routine could start execution, but to make it correctly
         // it is neccessary to save arguments, pointer to body function, pointer to context, e.t.c - i.e
         // save stack.
         Store(*pc);
 
         // Add routine as alive double-linked list
         pc->next = alive;
+        pc->prev = nullptr;
         alive = pc;
         if (pc->next != nullptr) {
             pc->next->prev = pc;
