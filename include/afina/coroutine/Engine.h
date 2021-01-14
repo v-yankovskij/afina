@@ -115,6 +115,7 @@ public:
      * If routine to pass execution to is not specified (nullptr) then method should behaves like yield. In case
      * if passed routine is the current one method does nothing
      */
+    __attribute__((no_sanitize_address))
     void sched(void *routine = nullptr);
 
     /**
