@@ -26,7 +26,7 @@ void Connection::OnClose() {
 
 // See Connection.h
 void Connection::DoRead() {
-    std::atomic_thread_fence(std::memory_order::memory_order_acquire);
+    std::lock_guard<std::mutex> lock(mut);
     try {
         int readed_bytes = -1;
         while ((readed_bytes = read(_socket, client_buffer, sizeof(client_buffer))) > 0) {
@@ -90,7 +90,7 @@ void Connection::DoRead() {
                     }
                     output.push_back(result);
                     if (output.size() >= max_output_queue_size) {
-                        _event.events &= ~EPOLLIN;
+                        _event.events &= !EPOLLIN;
                     }
                     // Prepare for the next command
                     command_to_execute.reset();
@@ -108,47 +108,50 @@ void Connection::DoRead() {
     } catch (std::runtime_error &ex) {
         _logger->error("Failed to process connection on descriptor {}: {}", _socket, ex.what());
         if (errno != EAGAIN) {
-            running.store(false, std::memory_order_release);
+            running.store(false, std::memory_order_relaxed);
         }
     }
-    std::atomic_thread_fence(std::memory_order::memory_order_release);
 }
 
 
 void Connection::DoWrite() {
-    std::atomic_thread_fence(std::memory_order_acquire);//барьер памяти, обеспечивающий то, что значения всех используемых переменных будут прочитаны до того, как функция начнет работу
+    std::lock_guard<std::mutex> lock(mut);
     _logger->debug("Do write on {} socket", _socket);
-    struct iovec io[output.size()];//структура, позволяющая одновременно передать несколько «кусков» данных, хранящихся в разных участках памяти
+    struct iovec io[output.size()];
     size_t i = 0;
     for (i = 0; i < output.size(); ++i) {
         io[i].iov_base = &(output[i][0]);
         io[i].iov_len = output[i].size();
-    }//переводим наши сообщения в iovec
-    io[0].iov_base = static_cast<char *>(io[0].iov_base) + _head;//начало сообщения уже было отправлено ранее
-    io[0].iov_len -= _head;//принимаем меры, чтобы оно не было отправлено повторно
-    ssize_t written_bytes = writev(_socket, io, i);)//Пытается отправить сообщение. Если получилось, выдаёт количество отправленных байтов. Если нет, выдаёт -1.
+    }
+    io[0].iov_base = static_cast<char *>(io[0].iov_base) + _head;
+    io[0].iov_len -= _head;
+    int written_bytes = writev(_socket, io, i);
     if (written_bytes <= 0) {
-        if (errno != EINTR /* системный вызов был прерван сигналом, но никакой ошибки на самом деле не произошло */  && errno != EAGAIN /* ресурс временно недоступен, попытайтесь позже */ && errno != EWOULDBLOCK /* операция была бы заблокирована, если бы дескриптор был в блокирующем режиме */) {
-            running.store(false, std::memory_order_relaxed); //если ошибка – не одна из этих трёх, значит соединение завершилось
+        if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+            running.store(false, std::memory_order_relaxed);
         }
         throw std::runtime_error("Failed to send response");
     }
     i = 0;
+    _head += written_bytes;
     for (const auto& command : output) {
-        if (written_bytes >= command.size()) {
+        if (_head >= command.size()) {
             i++;
-            written_bytes -= command.size();
+            _head -= command.size();
         } else {
             break;
         }
-    }//вычисляем количество полностью отправленных сообщений и размер отправленного «начала»
+    }
     output.erase(output.begin(), output.begin() + i);
-    _head = written_bytes;
     if (output.empty()) {
         _event.events &= ~EPOLLOUT;
-    }//если очередь исходящих сообщений пуста, то незачем ждать подходящего момента для их отправки
+    }
     if (output.size() <= max_output_queue_size){
         _event.events |= EPOLLIN;
-    }//если размер очереди сообщений не превышает максимума, то можно продолжить обрабатывать новые запросы
-    std::atomic_thread_fence(std::memory_order_release);//барьер памяти, обеспечивающий то, чтобы никто другой ничего не записывал в используемые переменные, пока функция не завершится
+    }
 }
+
+} // namespace MTnonblock
+} // namespace Network
+} // namespace Afina
+
