@@ -66,6 +66,7 @@ private:
     char client_buffer[4096];
 
     size_t max_output_queue_size;
+    std::mutex mut;
 };
 
 } // namespace MTnonblock
